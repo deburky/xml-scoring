@@ -2,7 +2,7 @@
 name = "xml-scoring"
 version = "0.1.0"
 description = "Explainability in Credit Risk Machine Learning"
-authors = ["D. Burakov <dennyemb@gmaill.com>"]
+authors = ["D. Burakov <dennyemb@gmail.com>"]
 license = "MIT License"
 readme = "README.md"
 
