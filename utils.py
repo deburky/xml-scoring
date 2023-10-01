@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 import xgboost as xgb
-from optbinning import BinningProcess, OptimalBinning
+from optbinning import BinningProcess, OptimalBinning, Scorecard
 from sklearn.linear_model import LogisticRegression
 from xgboost import XGBClassifier
 from sklearn.pipeline import Pipeline
@@ -384,7 +384,7 @@ class XGBoostTreeParser:
 
 
 """
-Function to create credit scores.
+Function to create credit scores for tree-based models.
 Author: D. Burakov (N26).
 """
 
@@ -430,3 +430,55 @@ def get_credit_scores(df: pd.DataFrame = None, features: List[str] = None,
     dataframe['Score'] = dataframe[features].sum(axis=1)
     
     return dataframe[features + ['Score']]
+
+
+"""
+Function to create credit scores for WOE LR models.
+Author: D. Burakov (N26).
+Adapted from: https://github.com/guillermo-navas-palencia/optbinning/scorecard/scorecard.py
+"""
+
+def woe_scorer(X: pd.DataFrame, scorecard: Scorecard, variable_name: str = None) -> np.ndarray:
+    """
+    Calculate the scores for a given dataset using a Scorecard model.
+
+    Args:
+        X (pd.DataFrame): The input dataset with features to score.
+        scorecard (Scorecard): The trained Scorecard model.
+        variable_name (str, optional): The name of the specific variable to score.
+            If provided, only this variable will be scored. If not provided, all selected variables will be scored.
+
+    Returns:
+        np.ndarray: An array of scores corresponding to the input dataset.
+
+    Raises:
+        ValueError: If the specified variable_name is not in the list of supported variables.
+    """
+    
+    # Check if a specific variable name is provided
+    if variable_name is not None:
+        # Check if the variable name is in the list of supported variables
+        if variable_name not in scorecard.binning_process_.get_support(names=True):
+            raise ValueError(f"Variable '{variable_name}' is not in the list of supported variables.")
+    else:
+        # Use all selected variables if none is specified
+        variable_name = scorecard.binning_process_.get_support(names=True)
+
+    # If a single variable is specified, convert it to a list
+    if isinstance(variable_name, str):
+        variable_name = [variable_name]
+
+    X_t = scorecard.binning_process.transform(
+        X=X, metric="indices", metric_special="empirical",
+        metric_missing="empirical")
+
+    score = np.zeros(X_t.shape[0])
+
+    df_scorecard = scorecard.table(style="summary")
+
+    for variable in variable_name:
+        mask = df_scorecard.Variable == variable
+        points = df_scorecard[mask].Points.values
+        score += points[X_t[variable]]
+
+    return score
