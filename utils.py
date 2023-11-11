@@ -49,10 +49,7 @@ def calibration_score(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     ])
     p_i_hat, n_i = np.unique(a[:, 0], return_counts=True)
 
-    # Calculate calibration loss using and L1 (robust) approach
-    clb_score = 1 - (np.sum(n_i * abs(p_i - p_i_hat)) / a[:, 1].shape[0])
-
-    return clb_score
+    return 1 - (np.sum(n_i * abs(p_i - p_i_hat)) / a[:, 1].shape[0])
 
 """
 Function to create a WOE LR pipeline.
@@ -130,23 +127,19 @@ def _check_arrays(y, y_pred):
 
 def _check_parameters(title, xlabel, ylabel, savefig, fname):
     if title is not None and not isinstance(title, str):
-        raise TypeError("title must be a string or None; got {}."
-                        .format(title))
+        raise TypeError(f"title must be a string or None; got {title}.")
 
     if xlabel is not None and not isinstance(xlabel, str):
-        raise TypeError("xlabel must be a string or None; got {}."
-                        .format(xlabel))
+        raise TypeError(f"xlabel must be a string or None; got {xlabel}.")
 
     if ylabel is not None and not isinstance(ylabel, str):
-        raise TypeError("ylabel must be a string or None; got {}."
-                        .format(ylabel))
+        raise TypeError(f"ylabel must be a string or None; got {ylabel}.")
 
     if not isinstance(savefig, bool):
-        raise TypeError("savefig must be a boolean; got {}.".format(savefig))
+        raise TypeError(f"savefig must be a boolean; got {savefig}.")
 
     if fname is not None and not isinstance(fname, str):
-        raise TypeError("fname must be a string or None; got {}."
-                        .format(fname))
+        raise TypeError(f"fname must be a string or None; got {fname}.")
 
     if savefig is True and fname is None:
         raise ValueError("fname must be provided if savefig is True.")
@@ -234,7 +227,7 @@ class XGBoostTreeParser:
 
     def get_tree_traceback(self): 
         tree_traceback = pd.DataFrame()
-        itr = 0 
+        itr = 0
         itrs = str(itr)
         while self.mdf_leafs.shape[0] > 0:
             NoSprout = pd.merge(self.mdf_leafs, self.mdf_parents, how='inner', left_on='ID'+itrs, right_on='No')
@@ -243,34 +236,47 @@ class XGBoostTreeParser:
             MissingSprout.Split = np.nan
 
             itr += 1
-            itrs = str(itr)    
-            NoSprout.insert(NoSprout.shape[1]-4, 'Sign'+itrs, '>=')
-            YesSprout.insert(YesSprout.shape[1]-4, 'Sign'+itrs, '<')
-            MissingSprout.insert(MissingSprout.shape[1]-4, 'Sign'+itrs, '.')
-            self.mdf_leafs = pd.concat([NoSprout, YesSprout, MissingSprout]) 
-            self.mdf_leafs.rename(columns={'ID':'ID'+itrs, 
-                                    'Split':'Split'+itrs, 
-                                    'Feature':'Feature'+itrs, 
-                                    'Node':'Node'+itrs, 
-                                    'Yes':'Yes'+itrs, 
-                                    'No':'No'+itrs, 
-                                    'Missing':'Missing'+itrs,
-                                    }, inplace=True)
-            
-            tree_traceback = pd.concat([tree_traceback, self.mdf_leafs.loc[self.mdf_leafs['Node' + itrs] == 0, :]], sort=False)
-            self.mdf_leafs = self.mdf_leafs[self.mdf_leafs['Node'+itrs]!=0]
-            
+            itrs = str(itr)
+            NoSprout.insert(NoSprout.shape[1]-4, f'Sign{itrs}', '>=')
+            YesSprout.insert(YesSprout.shape[1]-4, f'Sign{itrs}', '<')
+            MissingSprout.insert(MissingSprout.shape[1]-4, f'Sign{itrs}', '.')
+            self.mdf_leafs = pd.concat([NoSprout, YesSprout, MissingSprout])
+            self.mdf_leafs.rename(
+                columns={
+                    'ID': f'ID{itrs}',
+                    'Split': f'Split{itrs}',
+                    'Feature': f'Feature{itrs}',
+                    'Node': f'Node{itrs}',
+                    'Yes': f'Yes{itrs}',
+                    'No': f'No{itrs}',
+                    'Missing': f'Missing{itrs}',
+                },
+                inplace=True,
+            )
+
+            tree_traceback = pd.concat(
+                [
+                    tree_traceback,
+                    self.mdf_leafs.loc[self.mdf_leafs[f'Node{itrs}'] == 0, :],
+                ],
+                sort=False,
+            )
+            self.mdf_leafs = self.mdf_leafs[self.mdf_leafs[f'Node{itrs}'] != 0]
+
         ttb_missing = tree_traceback.copy()
         ttb_non_missing = tree_traceback.copy()
-        
+
         for i in range(1,itr+1): 
-            ttb_missing = ttb_missing[(ttb_missing['Sign'+str(i)] == '.') | ttb_missing['Sign'+str(i)].isna()]
-            ttb_non_missing = ttb_non_missing[ttb_non_missing['Sign'+str(i)] != '.']
+            ttb_missing = ttb_missing[
+                (ttb_missing[f'Sign{str(i)}'] == '.')
+                | ttb_missing[f'Sign{str(i)}'].isna()
+            ]
+            ttb_non_missing = ttb_non_missing[ttb_non_missing[f'Sign{str(i)}'] != '.']
 
         ttb = ttb_non_missing.copy()
         ttb.sort_values(['Tree', 'Split1', 'Sign1'], inplace=True, na_position='first')
         ttb.reset_index(drop=True, inplace=True)
-        
+
         return ttb, ttb_missing, tree_traceback, self.mdf_leafs, itr, itrs
 
     def setup_scorecard(self, ttb, ttb_missing, itr):
@@ -280,20 +286,25 @@ class XGBoostTreeParser:
         sc_df['Split'] = ttb.Split1.values
 
         for i in range(1,itr): 
-            replace_in_sc = ( ( sc_df['Sign']=='>=').values 
-                                & (ttb['Split'+str(i)] < ttb['Split'+str(i+1)]).values 
-                                & (ttb['Feature'+str(i)] == ttb['Feature'+str(i+1)]).values ) 
+            replace_in_sc = (
+                (sc_df['Sign'] == '>=').values
+                & (ttb[f'Split{str(i)}'] < ttb[f'Split{str(i + 1)}']).values
+            ) & (ttb[f'Feature{str(i)}'] == ttb[f'Feature{str(i + 1)}']).values 
 
-            sc_df.loc[replace_in_sc,'Sign'] = ttb['Sign'+str(i+1)][replace_in_sc].values
-            sc_df.loc[replace_in_sc,'Split'] = ttb['Split'+str(i+1)][replace_in_sc].values
+            sc_df.loc[replace_in_sc, 'Sign'] = ttb[f'Sign{str(i + 1)}'][
+                replace_in_sc
+            ].values
+            sc_df.loc[replace_in_sc, 'Split'] = ttb[f'Split{str(i + 1)}'][
+                replace_in_sc
+            ].values
 
         sc_df['Inc_Missing'] = sc_df.ID.isin(ttb_missing.ID0).astype(int) 
-        
+
         # Add XAddEvidence col
         cols = sc_df.columns.to_list()
-        cols.pop(cols.index('XAddEvidence')) 
+        cols.pop(cols.index('XAddEvidence'))
         sc_df = sc_df[cols+['XAddEvidence']]
-        
+
         return sc_df
 
     def format_scorecard(self, sc_df):
@@ -371,16 +382,20 @@ class XGBoostTreeParser:
     def generate_scorecard(self, bstr, PDO=50, standardSc_pts=500, standardSc_odds=19, pts_dec_prec=0, base_rate=None):
         
         self.mdf_leafs, self.mdf_parents = self.get_booster_leafs(bstr)
-        
+
         ttb, ttb_missing, tree_traceback, mdf_leafs, itr, itrs = self.get_tree_traceback()
         sc_df = self.setup_scorecard(ttb, ttb_missing, itr)
-        
+
         scorecard = self.format_scorecard(sc_df)
 
-        pointscard = self.setup_pointscard(scorecard, PDO=PDO, standardSc_pts=standardSc_pts, 
-                                    standardSc_odds=standardSc_odds, pts_dec_prec=pts_dec_prec, 
-                                    base_rate=base_rate)
-        return pointscard
+        return self.setup_pointscard(
+            scorecard,
+            PDO=PDO,
+            standardSc_pts=standardSc_pts,
+            standardSc_odds=standardSc_odds,
+            pts_dec_prec=pts_dec_prec,
+            base_rate=base_rate,
+        )
 
 
 """
@@ -394,41 +409,41 @@ def get_credit_scores(df: pd.DataFrame = None, features: List[str] = None,
     
     if df is None or features is None or scorecard is None:
         raise ValueError("df, features, and scorecard parameters are required.")
-    
+
     if not isinstance(df, pd.DataFrame):
         raise TypeError("df must be a DataFrame.")
-    
+
     if not isinstance(features, list):
         raise TypeError("features must be a list.")
-    
+
     if not isinstance(scorecard, pd.DataFrame):
         raise TypeError("scorecard must be a DataFrame.")
-    
+
     dataframe = df[features].copy()
     val_scores = np.zeros(len(dataframe))
-    
+
     for feature in features:
         feature_scores = np.zeros(len(dataframe))
-        
+
         for tree_id in scorecard.index.unique():
             criteria = scorecard.loc[tree_id]
-            
+
             for index, row in criteria.iterrows():
                 sc_feature = row['Feature']
-                sc_sign = row['Sign']
-                sc_split = row['Split']
-                sc_score = row['Points']
-                
                 if sc_feature == feature:
+                    sc_sign = row['Sign']
+                    sc_split = row['Split']
+                    sc_score = row['Points']
+
                     if sc_sign == '<':
                         feature_scores += (dataframe[sc_feature] < sc_split) * sc_score
                     elif sc_sign == '>=':
                         feature_scores += (dataframe[sc_feature] >= sc_split) * sc_score
-        
+
         dataframe[feature] = feature_scores
-    
+
     dataframe['Score'] = dataframe[features].sum(axis=1)
-    
+
     return dataframe[features + ['Score']]
 
 
@@ -456,14 +471,12 @@ def woe_scorer(X: pd.DataFrame, scorecard: Scorecard, variable_name: str = None)
     """
     
     # Check if a specific variable name is provided
-    if variable_name is not None:
-        # Check if the variable name is in the list of supported variables
-        if variable_name not in scorecard.binning_process_.get_support(names=True):
-            raise ValueError(f"Variable '{variable_name}' is not in the list of supported variables.")
-    else:
+    if variable_name is None:
         # Use all selected variables if none is specified
         variable_name = scorecard.binning_process_.get_support(names=True)
 
+    elif variable_name not in scorecard.binning_process_.get_support(names=True):
+        raise ValueError(f"Variable '{variable_name}' is not in the list of supported variables.")
     # If a single variable is specified, convert it to a list
     if isinstance(variable_name, str):
         variable_name = [variable_name]
